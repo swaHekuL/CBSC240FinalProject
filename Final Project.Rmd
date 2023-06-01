@@ -1,0 +1,512 @@
+---
+title: "Emotion as a Predictor of Cognitive Function"
+author: "Luke Haws, Jacob Cirrincione"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+For this project, we looked at the MIDUS 2 dataset available [here](https://doi.org/10.3886/ICPSR04652.v8) and attempted to find out if emotional status can be used as a way to predict one's cognitive function. The MIDUS 2 project measured subjects' emotional states, traits, and general regulation using two different methods: the Positive & Negative Affect Schedule and the Spielberg Trait and State Anxiety Scale. These were recorded via questionnaire while the subjects were sat down in a quiet room and shown emotionally distressing images along with a quickly flashed color bordering each image. They were then asked to recall the color of the border, and their accuracy and response times were recorded. Our project aims to look for correlations and dependencies within these measured values. 
+
+# Research Question
+
+### Does emotion play a factor in cognitive ability during a testing state?
+
+In order to answer this question, we first had to prepare the dataset:
+
+```{r echo = TRUE, warning = FALSE, message = FALSE} 
+
+library(dplyr)
+library(tidyr)
+library(readr)
+library(stringr)
+library(tibble)
+library(ggplot2)
+library(psych)
+library(yarrr)
+library(truncnorm)
+library(Rcpp)
+library(dplyr)
+library(readr)
+library(tidyr)
+library(stringr)
+library(tibble)
+library(ggplot2)
+library(psych)
+library(yarrr)
+library(lavaan)
+library(GPArotation)
+library(lm.beta)
+
+grossTXT <- read.delim('/media/data/shared_data/johnsondr/CBSC_240_01_F22/MA project datasets/ICPSR_28683/DS0001/28683-0001-Data.txt', header = FALSE)
+df <- separate(grossTXT,
+                   V1,
+                   c(
+                     'M2ID','SAMPLMAJ','B1PAGE_M2','B1PRSEX','B5PEEGDATE_MO','B5PEEGDATE_YR','B5MRIDATE_MO','B5MRIDATE_YR','B5PAGE','B5HAND','BFIC',  # Identifying Info
+                     'ASYMMETRY_USELESS','ALPHA_FREQ_USELESS',                                                                                  # stuff we dont need
+                     'B5E3EMG',                                                                                                                 # Corrugator info
+                     'B5BNEM','B5BNMM','B5BNLM','B5BOEM','B5BOMM','B5BOLM','B5BPEM','B5BPMM','B5BPLM','B5BNEA',                                 # EBR info
+                     'B5BNMA','B5BNLA','B5BOEA','B5BOMA','B5BOLA','B5BPEA','B5BPMA','B5BPLA',                                                   # More EBR info
+                     'B5CNE','B5CNM','B5CNL','B5COE','B5COM','B5COL','B5CPE','B5CPM','B5CPL',                                                   # more corrugator info 
+                     'B5SDPC01','B5SDPJ01','B5SDPH01','B5SDPL01','B5SDPD01','B5SDPO01','B5SDPP01','B5SDPG01','B5SDPA01','B5SDPW01','B5SDPI01',  # beliefs and feelings questions 1
+                     'B5SDPC02','B5SDPJ02','B5SDPH02','B5SDPL02','B5SDPD02','B5SDPO02','B5SDPP02','B5SDPG02','B5SDPA02','B5SDPW02','B5SDPI02',  # beliefs and feelings questions 2
+                     'B5SDPC03','B5SDPJ03','B5SDPH03','B5SDPL03','B5SDPD03','B5SDPO03','B5SDPP03','B5SDPG03','B5SDPA03','B5SDPW03','B5SDPI03',  # beliefs and feelings questions 3
+                     'B5SDPC04','B5SDPJ04','B5SDPH04','B5SDPL04','B5SDPD04','B5SDPO04','B5SDPP04','B5SDPG04','B5SDPA04','B5SDPW04','B5SDPI04',  # beliefs and feelings questions 4
+                     'B5SDPC05','B5SDPJ05','B5SDPH05','B5SDPL05','B5SDPD05','B5SDPO05','B5SDPP05','B5SDPG05','B5SDPA05','B5SDPW05','B5SDPI05',  # beliefs and feelings questions 5
+                     'B5SDPC06','B5SDPJ06','B5SDPH06','B5SDPL06','B5SDPD06','B5SDPO06','B5SDPP06','B5SDPG06','B5SDPA06','B5SDPW06','B5SDPI06',  # beliefs and feelings questions 6
+                     'B5SDPC07','B5SDPJ07','B5SDPH07','B5SDPL07','B5SDPD07','B5SDPO07','B5SDPP07','B5SDPW07','B5SDPI07',                        # beliefs and feelings questions 7
+                     'B5SPGP01','B5SPGN01','B5SPGP02','B5SPGN02','B5SPGP03','B5SPGN03','B5SPGN04','B5SPGN05','B5SPGP04','B5SPGP05',             # feelings and emotions ON AVG pnag 1-10  PG
+                     'B5SPGN06','B5SPGP06','B5SPGN07','B5SPGP07','B5SPGN08','B5SPGP08','B5SPGP09','B5SPGN09','B5SPGP10','B5SPGN10',             # feelings and emotions ON AVG pnag 11-20 PG
+                     'B5SP1P01','B5SP1N01','B5SP1P02','B5SP1N02','B5SP1P03','B5SP1N03','B5SP1N04','B5SP1N05','B5SP1P04','B5SP1P05',             # f and e RIGHT NOW pnan 101-110 P1
+                     'B5SP1N06','B5SP1P06','B5SP1N07','B5SP1P07','B5SP1N08','B5SP1P08','B5SP1P09','B5SP1N09','B5SP1P10','B5SP1N10',             # f and e RIGHT NOW pnan 111-120 P1
+                     'B5SP2P01','B5SP2N01','B5SP2P02','B5SP2N02','B5SP2P03','B5SP2N03','B5SP2N04','B5SP2N05','B5SP2P04','B5SP2P05',             # f and e RIGHT NOW pnan 201-210 P2
+                     'B5SP2N06','B5SP2P06','B5SP2N07','B5SP2P07','B5SP2N08','B5SP2P08','B5SP2P09','B5SP2N09','B5SP2P10','B5SP2N10',             # f and e RIGHT NOW pnan 211-220 P2
+                     'B5SRQE01','B5SRQV01','B5SRQB01','B5SRQB02','B5SRQB03','B5SRQV02','B5SRQV03','B5SRQE02','B5SRQE03','B5SRQB04','B5SRQV04',  # gen desc self rasq 1-11 DONT NEED
+                     'B5SS101','B5SS102','B5SS103','B5SS104','B5SS105','B5SS106','B5SS107','B5SS108','B5SS109','B5SS110',                       # feel right now stxs 101-110 S1
+                     'B5SS111','B5SS112','B5SS113','B5SS114','B5SS115','B5SS116','B5SS117','B5SS118','B5SS119','B5SS120',                       # feel right now stxs 111-120 S1
+                     'B5SS201','B5SS202','B5SS203','B5SS204','B5SS205','B5SS206','B5SS207','B5SS208','B5SS209','B5SS210',                       # feel right now stxs 201-210 S2
+                     'B5SS211','B5SS212','B5SS213','B5SS214','B5SS215','B5SS216','B5SS217','B5SS218','B5SS219','B5SS220',                       # feel right now stxs 211-220 S2
+                     'B5SST01','B5SST02','B5SST03','B5SST04','B5SST05','B5SST06','B5SST07','B5SST08','B5SST09','B5SST10',                       # gen feel stxt 1-10  ST
+                     'B5SST11','B5SST12','B5SST13','B5SST14','B5SST15','B5SST16','B5SST17','B5SST18','B5SST19','B5SST20',                       # gen feel stxt 11-20 ST
+                     'B5SER01','B5SES02','B5SER03','B5SES04','B5SER05','B5SES06','B5SER07','B5SER08','B5SES09','B5SER10',                       # emotional regulation erq 1-10 ER and ES
+                     'B5SDPC',  'B5SDPJ',  'B5SDPH',  'B5SDPL',  'B5SDPD',  'B5SDPO',  'B5SDPP',  'B5SDPG',  'B5SDPA',  'B5SDPW',  'B5SDPI',    # mean values of each emotion labelled below
+                     # content  # joy      # hope     # love     # desire  #compassion # pride    #gratitude # amuse    # awe      #interest 
+                     
+                     'B5SDPT',     'B5SPGP',         'B5SPGN',         'B5SP1P',          'B5SP1N',          'B5SP2P',          'B5SP2N',       # pos and neg affects
+                     #ALL pos aff  #posANDneg genPOS #posANDneg genNEG #posANDneg nowPOS1 #posANDneg nowNEG1 #posANDneg nowPOS2 #posANDneg nowNEG2
+                     
+                     'B5SRQB', 'B5SRQV',  'B5SRQE',                                                                                             # reactivity to affective stimuli
+                     #rasq BEV # rasq VR  # rasq Exp
+                     
+                     'B5SS1',   'B5SS2',   'B5SST',                                                                                             # spielberger state-trait anxiety inventory
+                     #staixNOW1 #staixNOW2 #staixGEN 
+                     
+                     'B5SES',   'B5SER',                                                                                                        # ERQ suppression and reappraisal
+                     #ERQ suppr #ERQ reapp 
+                     
+                     'B5RN','B5RO','B5RP',                                                                                                      # median reaction time
+                      #NEG   #NEU   #POS
+                     
+                     'B5AN','B5AO','B5AP',                                                                                                      # accuracy (proportion of total)
+                      #NEG   #NEU   #POS
+                     
+                     'B5C',                                                                                                                     # filter for good corrugator data
+                     'B5B'                                                                                                                      # num of valid eyeblink responses
+                     ),
+               
+                   sep = c(5,7,9,10,12,16,18,22,24,25,26, # identifying info
+                           288,478, # useless stuff
+                           487,                                          # corrugator info
+                           502,517,532,547,562,577,592,607,622,637,      # ebr info
+                           652,667,682,697,712,727,742,757,              # more ebr info
+                           772,787,802,817,832,847,862,877,892,          # more corrugator
+                           893,894,895,896,897,898,899,900,901,902,903,  # beliefs and feelings questions 1
+                           904,905,906,907,908,909,910,911,912,913,914,  # beliefs and feelings questions 2
+                           915,916,917,918,919,920,921,922,923,924,925,  # beliefs and feelings questions 3
+                           926,927,928,929,930,931,932,933,934,935,936,  # beliefs and feelings questions 4
+                           937,938,939,940,941,942,943,944,945,946,947,  # beliefs and feelings questions 5
+                           948,949,950,951,952,953,954,955,956,957,958,  # beliefs and feelings questions 6
+                           959,960,961,962,963,964,965,966,967,          # beliefs and feelings questions 7
+                           968,969,970,971,972,973,974,975,976,977,        # feelings and emotions pnag 1-10
+                           978,979,980,981,982,983,984,985,986,987,          # feelings and emotions pnag 11-20 
+                           988,989,990,991,992,993,994,995,996,997,            # f and e RIGHT NOW pnan 101-110
+                           998,999,1000,1001,1002,1003,1004,1005,1006,1007,      # f and e RIGHT NOW pnan 111-120
+                           1008,1009,1010,1011,1012,1013,1014,1015,1016,1017,      # f and e RIGHT NOW pnan 201-210
+                           1018,1019,1020,1021,1022,1023,1024,1025,1026,1027,        # f and e RIGHT NOW pnan 211-220
+                           1028,1029,1030,1031,1032,1033,1034,1035,1036,1037,1038,     # gen desc self rasq 1-11
+                           1039,1040,1041,1042,1043,1044,1045,1046,1047,1048,          # feel right now stxs 101-110
+                           1049,1050,1051,1052,1053,1054,1055,1056,1057,1058,          # feel right now stxs 111-120
+                           1059,1060,1061,1062,1063,1064,1065,1066,1067,1068,          # feel right now stxs 201-210
+                           1069,1070,1071,1072,1073,1074,1075,1076,1077,1078,          # feel right now stxs 211-220
+                           1079,1080,1081,1082,1083,1084,1085,1086,1087,1088,          # gen feel stxt 1-10
+                           1089,1090,1091,1092,1093,1094,1095,1096,1097,1098,          # gen feel stxt 11-20
+                           1099,1100,1101,1102,1103,1104,1105,1106,1107,1108,          # emotional regulation erq 1-10
+                           1123,1138,1153,1168,1183,1198,1213,1228,1243,1258,1273,     # mean values of each emotion labelled above
+                           
+                           1288,1303,1318,1333,1336,1351,1366,                         # pos and neg affects
+                           
+                           1381,1396,1411,                                          # reactivity to affective stimuli
+                           
+                           1426,1441,1456,                                        # spielberger state-trait anxiety inventory
+                           
+                           1471,1486,                                           # ERQ suppression and reappraisal
+                           
+                           1492,1498,1504,                                    # median reaction time
+                           
+                           1519,1534,1549,                                  # accuracy (proportion of total)
+                           
+                           1550,                                          # filter for good corrugator data
+                           1552                                          # num valid eyeblink responses
+                           
+                           
+                            ),
+               
+                   remove = TRUE,
+                   convert = TRUE
+                   )
+
+df_milwaukee <- df %>%
+  filter(SAMPLMAJ == 13)
+df_madison <- df %>%
+  filter(SAMPLMAJ %in% c(1,2,3))
+
+```
+
+We chose to look at certain variables from the dataset in order to answer this question. The variables, and the abbreviations used to represent each one, are as follows:
+
+Variable Information | Variable Name
+-------------------- | -------------
+General Form of the Positive and Negative Affect Schedule: Positive Results | PG_P_mean
+General Form of the Positive and Negative Affect Schedule: Negative Results | PG_N_mean  
+Now Form of the Positive and Negative Affect Schedule: Positive Results from early in session | P1_P_mean  
+Now Form of the Positive and Negative Affect Schedule: Negative Results from early in session | P1_N_mean  
+Now Form of the Positive and Negative Affect Schedule: Positive Results from late in session | P1_P_mean  
+Now Form of the Positive and Negative Affect Schedule: Negative Results from late in session | P1_N_mean 
+Spielberger State Anxiety Scale: Time 1 from early in session | SS1_mean
+Spielberger State Anxiety Scale: Time 2 from early in session | SS2_mean
+Spielberger Trait Anxiety Scale | ST_mean
+
+Using these variables, we first decided to build a 2 factor model to determine the relationships between the Positive and Negative Affect Schedule (PANAS), the Spielberger Trait Anxiety Scale (ST), and the Spielberger State Anxiety Scale (SS). We originally believed that there would be only two factors: the positive results and the negative results.
+
+# Data Selection and Analysis
+
+First, we selected our data from the dataset and dropped missing values.
+
+```{r warning=FALSE, message=FALSE}
+
+# selecting data
+df_PANAS_STT <- df %>%
+  select(B5SP1N01, B5SP1N02, B5SP1N03, B5SP1N04, B5SP1N05, B5SP1N06, B5SP1N07, B5SP1N08, 
+         B5SP1N09, B5SP1N10, B5SP1P01, B5SP1P02, B5SP1P03, B5SP1P04, B5SP1P05, B5SP1P06, 
+         B5SP1P07, B5SP1P08, B5SP1P09, B5SP1P10, B5SP2P01, B5SP2P02, B5SP2P03, B5SP2P04,
+         B5SP2P05, B5SP2P06, B5SP2P07, B5SP2P08, B5SP2P09, B5SP2P10, B5SP2N01, B5SP2N02, 
+         B5SP2N03, B5SP2N04, B5SP2N05, B5SP2N06, B5SP2N07, B5SP2N08, B5SP2N09, B5SP2N10, 
+         B5SS101, B5SS102, B5SS103, B5SS104, B5SS105, B5SS106, B5SS107, B5SS108, B5SS109, 
+         B5SS110, B5SS111, B5SS112, B5SS113, B5SS114, B5SS115, B5SS116, B5SS117, B5SS118, 
+         B5SS119, B5SS120, B5SS201, B5SS202, B5SS203, B5SS204, B5SS205, B5SS206, B5SS207, 
+         B5SS208, B5SS209, B5SS210, B5SS211, B5SS212, B5SS213, B5SS214, B5SS215, B5SS216, 
+         B5SS217, B5SS218, B5SS218, B5SS219, B5SS220, B5SST01, B5SST02, B5SST03, B5SST04, 
+         B5SST05, B5SST06, B5SST07, B5SST08, B5SST09, B5SST10, B5SST11, B5SST12, B5SST13, 
+         B5SST14, B5SST15, B5SST16, B5SST17, B5SST18, B5SST19, B5SST20, B5SPGP01, B5SPGP02, 
+         B5SPGP03, B5SPGP04, B5SPGP05, B5SPGP06, B5SPGP07, B5SPGP08, B5SPGP09, B5SPGP10, 
+         B5SPGN01, B5SPGN02, B5SPGN03, B5SPGN04, B5SPGN05, B5SPGN06, B5SPGN07, B5SPGN08, 
+         B5SPGN09, B5SPGN10, B5SPGP, B5SPGN, B5SP1P, B5SP1N, B5SP2N, B5SP2P, B5SST, B5SS1, 
+         B5SS2, B1PRSEX, B5RN, B5RP, B5RO, B5AN, B5AO, B5AP ) %>%
+  # renaming columns
+  rename( sex = B1PRSEX,
+          PG_P_mean = B5SPGP,
+          PG_N_mean = B5SPGN, 
+          P1_P_mean= B5SP1P, 
+          P1_N_mean = B5SP1N, 
+          P2_N_mean = B5SP2N, 
+          P2_P_mean = B5SP2P, 
+          ST_mean = B5SST, 
+          SS1_mean = B5SS1, 
+          SS2_mean = B5SS2,
+          Response_neg = B5RN,
+          Response_pos = B5RP, 
+          Response_neut = B5RO, 
+          Acc_neg = B5AN, 
+          Acc_neut = B5AO, 
+          Acc_pos = B5AP
+          ) %>% 
+  # sets values of 8 and 9998 to missing
+  na_if(8) %>%
+  na_if(9998)
+
+
+# removes missing data
+PANAS_STT <- df_PANAS_STT %>% 
+  drop_na()
+
+#This dataframe will be used to test predictive ability strength when running a 
+#multiple regression
+PANAS_means <- PANAS_STT %>%
+  select(PG_P_mean,PG_N_mean, P1_P_mean, P1_N_mean, P2_N_mean, P2_P_mean, ST_mean,SS1_mean, SS2_mean,Response_neg, Response_pos, Response_neut, Acc_neg, Acc_neut, Acc_pos, sex) %>% 
+       mutate( 
+         PG_P_mean = 6-PG_P_mean,
+         P1_P_mean = 6-P1_P_mean,
+         P2_P_mean = 6-P2_P_mean,
+         PG_N_mean = 6-PG_N_mean,
+         P1_N_mean = 6-P1_N_mean,
+         Acc_neg = 1-Acc_neg, 
+         Acc_neut = 1-Acc_neut,
+         Acc_pos = 1-Acc_pos)
+
+#Dataframe used to test correlation between our factors
+PANAS_means_model <- PANAS_STT %>%
+  select(PG_P_mean,PG_N_mean, P1_P_mean, P1_N_mean, P2_N_mean, P2_P_mean, ST_mean,SS1_mean, SS2_mean) %>% 
+       mutate( 
+         PG_P_mean = 6-PG_P_mean,
+         P1_P_mean = 6-P1_P_mean,
+         P2_P_mean = 6-P2_P_mean)
+
+#Reliability computed for the variables in this factor model, and which factors
+#should be reversed
+alpha(PANAS_means_model)
+
+
+```
+
+After doing this, we decided to analyze the scree and vss plots for the data to determine if using a two factor model was a good idea or not.
+
+```{r warning=FALSE, message=FALSE}
+
+scree(PANAS_means_model)
+vss(PANAS_means_model)
+#the flip of map values around 2-3 factors shows either 2 or 3 factors will 
+#best fit our model
+
+```
+
+# EFA Models
+
+Given the VSS and Scree plots shown, we decided that either a 2 or 3 factor model would be best for our data. So, we performed an EFA for both to determine where the variables correlate. we also create the model for CFA based on this EFA.
+
+```{r warning=FALSE, message=FALSE}
+
+#Assign categories for two factor model using EFA
+PANAS_obliq_2 <- fa(PANAS_means_model, 
+                     nfactors = 2, 
+                     fm = "minres", 
+                     rotate = "oblimin")
+PANAS_obliq_2
+
+
+#Model for 2 Factors
+PANAS_means_Model2 <- 
+' 
+Neg =~ PG_N_mean + P1_N_mean + P2_N_mean + ST_mean + SS1_mean + SS2_mean
+Pos =~ PG_P_mean + P1_P_mean + P2_P_mean
+'
+
+```
+
+![](/home/hawsl23@ad.wlu.edu/final/idk/ML3 2 factor.png) 
+Picture above: illustration depicting 2 factor model.
+
+EFA and model for 3 factor.
+
+```{r warning=FALSE, message=FALSE}
+
+#Assign categories for 3 Factor model using EFA
+PANAS_obliq_3 <- fa(PANAS_means_model, 
+                     nfactors = 3, 
+                     fm = "minres", 
+                     rotate = "oblimin")
+PANAS_obliq_3
+
+#Model for 3 Factors
+PANAS_means_Model3 <- 
+' 
+Neg =~ PG_N_mean + P1_N_mean + ST_mean + SS1_mean 
+Pos =~ PG_P_mean + P1_P_mean + P2_P_mean
+New Variable =~ P2_N_mean + SS2_mean
+'
+
+```
+
+![](/home/hawsl23@ad.wlu.edu/final/idk/ML3 3 factor.png) 
+Picture above: illustration depicting 3 factor model.
+# CFA Models 
+
+After using EFAs to create each model, we directly compare the two CFA models.
+
+```{r warning=FALSE, message=FALSE}
+
+#Look at fit using CFA, CFI, RMSEA, and SRMR
+# 2 factor model
+fit_means2 <- cfa(PANAS_means_Model2, 
+                  data = PANAS_means_model)
+summary(fit_means2, fit.measures=TRUE)
+
+```
+
+```{r warning=FALSE, message=FALSE}
+
+#Look at fit using CFA, CFI, RMSEA, and SRMR
+# 3 factor model
+fit_means3 <- cfa(PANAS_means_Model3, 
+                  data = PANAS_means_model)
+summary(fit_means3, fit.measures=TRUE)
+
+#lambda values tells us standardized loadings of each variable
+lavInspect(fit_means3, what = "std")
+
+```
+
+We saw that the 3 factor model performed better than the 2 Factor model given the CFI, RMSEA, and SRMR values. In our 2 factor model, we observed a CFI value of 0.768, a RMSEA value of 0.2, and a SRMR value of 0.098. Looking at this model alone, we can infer that the two factor model could fit our data but may not be the best fit. In our 3 Factor model, we observed a CFI value of 0.868, a RMSEA value of 0.156, and a SRMR value of 0.08. While the RMSEA value seems to be higher regardless of our model fit, we ran lavInspect to look further into the correlation in our loadings. The lambda value shows that our variables still have high significance in their factors. This tells us that even though our RMSEA values do not meet the required range and cause doubt for a good fit model, our proposed 3 Factor model still shows a good fit in our standardized loadings.
+
+# Regression Models 
+
+We then applied regression to the 3 Factor model to determine how strong its' predictive ability is for response time and accuracy given emotions experienced during the emotion inducing test. However, when applying the regression, we chose to drop the P2_N_mean and SS2_mean variables because they damaged correlations. 
+
+```{r warning=FALSE, message=FALSE}
+
+#Create new data frame of means of the factors for regression analysis
+PANAS_reg <- mutate(PANAS_means, Response = rowMeans(select(PANAS_means,
+                                              c(Response_neut, Response_pos, Response_neg))),
+                    Neg = rowMeans(select(PANAS_means,
+                                              c(PG_N_mean, P1_N_mean, ST_mean ))),
+                    Pos = rowMeans(select(PANAS_means,
+                                              c(PG_P_mean, P1_P_mean, P2_P_mean))),
+                    Accuracy = rowMeans(select(PANAS_means,
+                                              c(Acc_pos, Acc_neut, Acc_neg))),
+                    Late_NEG = rowMeans(select(PANAS_means,
+                                              c(P2_N_mean, SS2_mean)))) %>%
+  select(Response, Neg, Pos, Accuracy, Late_NEG)
+
+#multi regression Response
+reg_response <- lm.beta(lm(Response ~ Neg + Pos, data = PANAS_reg))
+summary(reg_response)
+
+#Bivariate regressions Response
+reg_bi_response1 <- lm.beta(lm(Response ~ Neg, data = PANAS_reg))
+summary(reg_bi_response1)
+
+reg_bi_response2 <- lm.beta(lm(Response ~ Pos, data = PANAS_reg))
+summary(reg_bi_response2)
+
+
+
+#Multiregression accuracy 
+reg_accuracy <- lm.beta(lm(Accuracy ~ Neg + Pos, data = PANAS_reg))
+summary(reg_accuracy)
+
+#Bivariate regressions Accuracy
+reg_bi_accuracy1 <- lm.beta(lm(Accuracy ~ Neg, data = PANAS_reg))
+summary(reg_bi_accuracy1)
+
+reg_bi_accuracy2 <- lm.beta(lm(Accuracy ~ Pos, data = PANAS_reg))
+summary(reg_bi_accuracy2)
+
+```
+
+# Measurement of Invariance
+
+Here we ran a measurement invariance test to observe any bias between the two gender groups in our dataset. Since our dataset didn't provide many demographics about the subject, in order to maintain anonymity, gender will be our only grouping. 
+
+## Configural Model test 
+
+Our configural model shows our original fit of our model with a CFI of 0.861, RMSEA of 0.162, and SRMR of 0.082. Previously we discussed that our model does not meet the requirments for the RMSEA values, however the loadings are still correlated so we will proceeed with caution.
+
+```{r}
+fit_config <- cfa(PANAS_means_Model3, 
+                  data = PANAS_means, 
+                  group = "sex")
+
+summary(fit_config, fit.measures=TRUE)
+lavInspect(fit_config, what = "std")
+
+```
+
+## Weak Invariance test
+
+Our test of a weak invariance model shows our CFI dropped slightly to 0.854, our RMSEA surprisingly decreased slightly to 0.157, and our SRMR raised slightly to 0.091. Since these changes are not significant enough, we can assume we have a weak invariance model and will proceed. 
+
+
+```{r}
+fit_weak <- cfa(PANAS_means_Model3, 
+                  data = PANAS_means, 
+                  group = "sex", 
+                group.equal = c("loadings")
+                )
+
+summary(fit_weak, fit.measures=TRUE)
+lavInspect(fit_weak, what = "std")
+```
+
+## Strong Invariance test
+
+Our test of a strong invariance model shows our CFI dropped slightly to 0.853, our RMSEA surprisingly decreased more to 0.149, and our SRMR raised slightly to 0.093. Since these differences in values are substantially different, we can assume we have a strong invariance model and will proceed. 
+
+```{r}
+fit_strong <- cfa(PANAS_means_Model3, 
+                  data = PANAS_means, 
+                  group = "sex", 
+                group.equal = c("loadings", "intercepts")
+                )
+
+summary(fit_strong, fit.measures=TRUE)
+lavInspect(fit_strong, what = "std")
+```
+
+## Strict Invariance test
+
+Our test of a strict invariance model shows our CFI dropped slightly to 0.829, our RMSEA increased slightly to 0.141, and our SRMR raised slightly to 0.102. Our values of fit changed by, at most, 0.02 during our testing of invariance. Since  these differences in values are not substantially different, we can conclude that we have a strict invariance model. While our original configuration model barely fit the requirements of a good fit, we will cautiously conclude that the three correlated factors fit both genders equally.
+
+```{r}
+fit_strict <- cfa(PANAS_means_Model3, 
+                  data = PANAS_means, 
+                  group = "sex", 
+                group.equal = c("loadings", "intercepts", "residuals")
+                )
+
+summary(fit_strict, fit.measures=TRUE)
+lavInspect(fit_strict, what = "std")
+```
+
+
+# Ethical Considerations
+
+## How can this technology be attacked or abused?
+
+This information can be used to potentially attack those with poor results with advertisements for medicine that might help with cognitive ability or emotional regulation. Specific ad targeting is never ideal, especially for those that are older or don't know how to avoid phishing scams. Can also indirectly and unintentionally bias towards one gender group or locale or age range. Could also misinform MDs if they only rely on this model.
+
+## Test to ensure it is fair and representative?
+
+Our measurement of invariance showed our model achieved a strict invariance model and proved that the data is fair across our gender demographic. It is difficult to test for representation since our only demographic provided was gender. 
+ 
+## Understand possible biases?
+
+The dataset could possibly bias towards one recorded gender, or a specific age group. 
+
+## Diversity of opinions, backgrounds, and kinds of thought?
+
+Dataset only includes data from two areas, Milwaukee and Madison, Wisconsin. However, the age range varies from 25 to 74, so different kinds of thought are represented that way. No demographics other than age and gender are provided, so we have no way of confirming different ethnic groups are represented.
+
+## User consent to collect data?
+
+Midlife Development of the U.S. collected data and ensured consent from each participant on conducting the test, but does not mention any specifics about the data. 
+
+## Mechanism for gathering consent?
+
+Asked for consent upon beginning the test, prior to the administering of the written test.
+
+## Explained clearly what users are consenting to?
+
+Was not clearly stated in the available literature, however we can assume the data collectors informed the participants the purpose of their study.
+
+## Redress if people are harmed by results?
+
+Take down our software / model and kill it. Put mechanisms in place to reach out to MIDUS group in case of severe fallout or harm.
+
+## Shut down software in production if behaving badly?
+
+Our software / model is just a simple model showing correlations between emotional regulation and cognitive ability. "Behaving badly" doesn't seem to be a real concern for us, other than showing no correlation. Also, not pushing this to production. This is for a class project.
+
+## Fairness with respect to different user groups?
+
+The tests were administered the same to each group of people, Milwaukee and Madison participants.
+
+## Tested for disparate error rates among different user groups?
+
+Our dataset did not include many demographics beside gender and age, therefore it would be difficult to test if specific user groups had error rates. Neverless, a test of invariance was conducted and concluded that our model met a strict invariance model. 
+
+## Test and monitor for model drift to ensure software remains fair over time?
+
+Model will not change unless the data changes, and the data is not changing. Revisit ethical questions to check if this model is still fair overtime. 
+
+## Plan to protect and secure user data?
+
+The MIDUS 2 dataset is available online for download, however the data collectors have maintained anonymity to ensure subjects protection.
+
